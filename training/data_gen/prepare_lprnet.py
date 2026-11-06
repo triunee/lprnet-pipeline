@@ -1,5 +1,15 @@
+"""생성 이미지(result*)를 번호판 단위로 train/val/test에 나눈다.
+
+python prepare_lprnet.py         # ./dataset3: 100x50으로 줄여 저장 (학습·서빙 입력 크기)
+python prepare_lprnet.py --raw   # ./dataset3_raw: 같은 분할·같은 파일명으로 원본 크기 그대로 복사
+                                 #   (두 줄 번호판 펴기·학습 중 증강처럼 줄이기 전 이미지가 필요한 실험용)
+두 경우 모두 <출력>/manifest.csv 에 파일별 원본 경로·크기·번호판 배치(one_line/two_line)를 남긴다.
+"""
+import argparse
+import csv
 import os
 import re
+import shutil
 import sys
 import random
 import unicodedata
@@ -11,9 +21,13 @@ from tqdm import tqdm
 
 SRC_DIRS    = ["result2", "result3", "result32", "result33", "result6"]
 AUG_DIR     = "result6"  # 다른 폴더 이미지를 증강한 폴더 — 원본과 같은 split으로 보낸다
-TRAIN_DIR   = "./dataset3/train"
-VAL_DIR     = "./dataset3/val"
-TEST_DIR    = "./dataset3/test"
+_ap = argparse.ArgumentParser()
+_ap.add_argument("--raw", action="store_true", help="줄이지 않고 원본 크기로 저장 (./dataset3_raw)")
+RAW = _ap.parse_args().raw
+OUT_ROOT    = "./dataset3_raw" if RAW else "./dataset3"
+TRAIN_DIR   = f"{OUT_ROOT}/train"
+VAL_DIR     = f"{OUT_ROOT}/val"
+TEST_DIR    = f"{OUT_ROOT}/test"
 TRAIN_RATIO = 0.70
 VAL_RATIO   = 0.15
 # 나머지 0.15가 test
@@ -50,23 +64,58 @@ def extract_label(filepath) -> str:
     return unicodedata.normalize("NFC", stem)   # macOS 파일명(NFD) → NFC, 다른 OS로 옮겨도 라벨이 같게
 
 
-def process_image(src_path: str, dst_path: str) -> bool:
+def process_image(src_path: str, dst_path: str):
+    """저장하고 원본 (높이, 너비)를 돌려준다. 읽기 실패면 None"""
     img = cv2.imread(src_path)
     if img is None:
-        return False
-    img = cv2.resize(img, IMG_SIZE, interpolation=cv2.INTER_CUBIC)
-    cv2.imwrite(dst_path, img)
-    return True
+        return None
+    if RAW:
+        shutil.copyfile(src_path, dst_path)
+    else:
+        cv2.imwrite(dst_path, cv2.resize(img, IMG_SIZE, interpolation=cv2.INTER_CUBIC))
+    return img.shape[:2]
+
+
+# 두 줄 번호판: gen_truck.py Type_C (335x170, 윗줄 "지역+숫자 2개", 아랫줄 "한글+숫자 4개").
+# result6은 다른 폴더 이미지를 회전·전단한 것이라 크기가 바뀌므로 원본 파일의 배치를 따른다.
+TWO_LINE_DIR, TWO_LINE_SHAPE = "result3", (170, 335)
+
+
+def source_of(path: Path) -> Path:
+    if path.parts[0] != AUG_DIR:
+        return path
+    stem = re.sub(r"_(lp|rp|l|r)$", "", path.stem)
+    for src in SRC_DIRS:
+        cand = Path(src, "images", stem + path.suffix)
+        if src != AUG_DIR and cand.exists():
+            return cand
+    raise FileNotFoundError(f"{path}의 원본을 찾지 못했습니다")
+
+
+def layout_of(path: Path) -> str:
+    orig = source_of(path)
+    if orig.parts[0] == TWO_LINE_DIR and cv2.imread(str(orig)).shape[:2] == TWO_LINE_SHAPE:
+        return "two_line"
+    return "one_line"
+
+
+manifest = []
 
 
 def save_split(file_list, dst_dir, desc):
+    split = os.path.basename(dst_dir)
     counter = {}
     for src_path, label in tqdm(file_list, desc=desc):
         counter[label] = counter.get(label, 0) + 1
         dst_name = f"{label}_{counter[label]}.jpg"
         dst_path = os.path.join(dst_dir, dst_name)
-        if not process_image(str(src_path), dst_path):
+        shape = process_image(str(src_path), dst_path)
+        if shape is None:
             print(f"[ERROR] 읽기 실패: {src_path}")
+            continue
+        manifest.append({"split": split, "file": dst_name,
+                         "source": unicodedata.normalize("NFC", str(src_path)),
+                         "height": shape[0], "width": shape[1], "layout": layout_of(src_path)})
 
 
 for d in (TRAIN_DIR, VAL_DIR, TEST_DIR):
@@ -140,6 +189,13 @@ os.makedirs(TEST_DIR,  exist_ok=True)
 save_split(train_files, TRAIN_DIR, "train")
 save_split(val_files,   VAL_DIR,   "val  ")
 save_split(test_files,  TEST_DIR,  "test ")
+
+with open(f"{OUT_ROOT}/manifest.csv", "w", newline="", encoding="utf-8") as fp:
+    w = csv.DictWriter(fp, fieldnames=["split", "file", "source", "height", "width", "layout"])
+    w.writeheader()
+    w.writerows(manifest)
+two = sum(m["layout"] == "two_line" for m in manifest)
+print(f"\nmanifest: {OUT_ROOT}/manifest.csv (두 줄 번호판 {two}장 / 전체 {len(manifest)}장)")
 
 print(f"\n완료! (split 간 번호판 중복 0건)")
 print(f"  train : {len(train_files)}장  →  {TRAIN_DIR}")
