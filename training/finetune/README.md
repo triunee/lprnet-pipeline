@@ -2,6 +2,7 @@
 
 - `train.py` — 파인튜닝 실행 스크립트 (PyTorch Lightning, `config/kor_config.yaml` 사용, `max_epochs=300`, `patience=30`)
 - `export_onnx.py` — 학습된 체크포인트(.ckpt/.pt) → ONNX 변환 스크립트
+- `train_exp.py`, `lprnet_ext.py` — 정규화·LR 스케줄·seed를 바꿔 가며 돌리는 실험용 학습. 사용법은 [`../experiments/README.md`](../experiments/README.md)
 
 실행 예시:
 
