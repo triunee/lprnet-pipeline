@@ -12,10 +12,12 @@ LPRNET_SRC=${LPRNET_SRC:-$WORK/LPRNet-master2}
 DATA_ROOT=${DATA_ROOT:-$WORK/ALPRData}
 OUT=${OUT:-$WORK/runs}
 SEEDS=${SEEDS:-"0 1 2"}
-PARALLEL=${PARALLEL:-5}
+# run 하나가 GPU 메모리를 6~7GB 쓴다 (batch 256, AMP). 24GB(RTX 4090)에서 5개는 OOM, 3개까지
+PARALLEL=${PARALLEL:-3}
 SMOKE=${SMOKE:-0}
 
 export PYTHONPATH="$LPRNET_SRC:$REPO/training/finetune"
+export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
 PRETRAINED=$LPRNET_SRC/weights/lprnet_kor.pt
 
 # 이름|train_exp.py 옵션. 각 실험은 A_orig에서 한 가지씩만 바꾼다 (E는 B+C 조합)

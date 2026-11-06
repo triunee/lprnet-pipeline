@@ -77,7 +77,7 @@ rsync -avz -e "ssh -p $PORT" ~/Documents/ALPRData-main_4/dataset3 $POD:/workspac
    nohup bash run_all.sh > /workspace/run_all.log 2>&1 &
    tail -f /workspace/run_all.log
    ```
-   - 기본값은 동시에 5개(`PARALLEL=5`)입니다. run 하나가 data worker 4개를 쓰므로, `setup.sh`가 보여 준 vCPU 수에 맞춰 `PARALLEL=3 bash run_all.sh`처럼 줄이세요.
+   - 기본값은 동시에 3개(`PARALLEL=3`)입니다. run 하나가 GPU 메모리 6~7GB와 data worker 4개를 씁니다. RTX 4090(24GB)에서 5개를 돌리면 메모리가 부족해 실패합니다(OOM). GPU 메모리가 더 큰 서버라면 vCPU 수도 보고 늘리세요. Pod 안의 `nproc`는 서버 전체 코어 수를 보여 줄 수 있어서, RunPod 화면에 나온 vCPU 수를 기준으로 잡습니다.
    - 실험 5개 × seed 3개 = 학습 15번입니다. 중간에 끊기면 같은 명령을 다시 실행하면 됩니다.
 6. **결과 내려받기.**
    ```bash
